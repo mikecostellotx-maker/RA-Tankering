@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <title>Richardson Aviation Fuel Tankering Calculator v1.72</title>
+  <style>
+    :root{ --bg:#0f172a; --panel:#0b1223; --muted:#94a3b8; --text:#e5e7eb; --accent:#22d3ee; }
+    *{box-sizing:border-box} body{margin:0;background:#0f172a;color:var(--text);font:16px/1.35 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    header{padding:16px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #1f2937;background:#0b1223}
+    h1{margin:0;font-size:18px} main{max-width:1200px;margin:0 auto;padding:12px;display:grid;grid-template-columns:420px 1fr;gap:12px}
+    .card{background:#0b1223;border:1px solid #1f2937;border-radius:14px} .card h2{margin:0;padding:10px 12px;border-bottom:1px solid #1f2937;font-size:13px;color:#93c5fd;letter-spacing:.08em;text-transform:uppercase}
+    .content{padding:12px} .row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin:8px 0} label{font-size:12px;color:var(--muted)}
+    input{width:100%;padding:10px;border-radius:10px;border:1px solid #334155;background:#0b1223;color:var(--text)} input:focus{outline:2px solid #22d3ee55;border-color:#22d3ee66}
+    .pill{padding:8px 10px;border-radius:999px;border:1px solid #1f2937;font-size:12px} .btn{cursor:pointer;border:1px solid #1f2937;padding:10px 12px;border-radius:12px;background:#0b1223;color:var(--text);font-weight:600;margin-right:8px}
+    .btn.primary{background:linear-gradient(180deg,#06b6d4,#0891b2);border-color:#0891b2;color:#001014} .btn.print{background:linear-gradient(180deg,#22c55e,#16a34a);border-color:#15803d;color:#001014}
+    .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:10px} .box{padding:12px;border-radius:12px;background:#0b1223;border:1px solid #1f2937}
+    .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em} .value{font-size:20px;font-weight:800;margin-top:4px} .small{font-size:12px;color:var(--muted)}
+    table{width:100%;border-collapse:collapse} th,td{padding:8px 10px;border-bottom:1px solid #1f2937;text-align:left;font-size:13px} th{color:#93c5fd;text-transform:uppercase;letter-spacing:.08em;font-size:11px} .right{text-align:right}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px} .airport{display:grid;grid-template-columns:80px 1fr;gap:8px} .subtitle{font-size:12px;color:#a3a3a3;margin:10px 0 0}
+    .row-1{display:flex;gap:8px;align-items:center} .legCard{padding:10px;border:1px dashed #334155;border-radius:10px;margin:8px 0}
+    @media print{ header, #addLeg, .btn {display:none !important;} main {grid-template-columns:1fr;} body {background:white; color:black;} .card {background:white; color:black} .box {border:1px solid #000} }
+  </style>
+  <script>
+    if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js')); }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>Richardson Aviation Fuel Tankering Calculator v1.72</h1>
+    <div class="actions">
+      <button class="btn" id="shareBtn">Share scenario</button>
+      <button class="btn print" id="printBtn">🖨️ Print/Share PDF</button>
+      <button class="btn primary" id="calcBtn">Calculate ⏵</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Inputs (US units)</h2>
+      <div class="content">
+        <div class="row"><label>Fuel Density</label><input id="density" type="number" step="0.01" value="6.70"><span class="pill">lb/gal</span></div>
+
+        <div class="row"><label>Enable Weight Penalty</label><input id="penaltyOn" type="checkbox" checked><span class="pill">on/off</span></div>
+        <div class="row"><label>Penalty (% extra burn per 1,000 lb carried)</label><input id="penaltyPct" type="number" step="0.1" value="1.5"><span class="pill">%/1000 lb</span></div>
+
+        <div class="subtitle">Origin</div>
+        <div class="legCard">
+          <div class="airport">
+            <input id="origIcao" value="KFTW" maxlength="6" />
+            <div class="row"><label>Price @ Origin</label><input id="p0" type="number" step="0.01" value="4.25"><span class="pill">$/gal</span></div>
+          </div>
+        </div>
+
+        <div class="subtitle">Legs</div>
+        <div id="legs"></div>
+        <button class="btn" id="addLeg">＋ Add leg</button>
+
+        <div class="small" style="margin-top:8px">Each leg needs: destination ICAO, <b>fuel price at destination</b>, <b>block burn (lb)</b>, <b>desired fuel on landing (lb)</b>, and optional fee logic at that destination.</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Results</h2>
+      <div class="content">
+        <div class="kpi">
+          <div class="box"><div class="label">Total Trip Cost</div><div class="value" id="kpiTotal">—</div><div class="small" id="kpiTotalNote"></div></div>
+          <div class="box"><div class="label">Total Fuel (gal)</div><div class="value" id="kpiGal">—</div><div class="small" id="kpiGalNote"></div></div>
+          <div class="box"><div class="label">Origin Uplift</div><div class="value" id="kpiOrig">—</div><div class="small">Includes penalty if enabled</div></div>
+        </div>
+
+        <h3 style="margin-top:16px">Per-Stop Plan</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Airport</th><th class="right">Buy (gal)</th><th class="right">Price ($/gal)</th><th class="right">Fees</th><th class="right">Arrive Fuel (gal|lb)</th><th class="right">Depart Fuel (gal|lb)</th><th>Why</th>
+            </tr>
+          </thead>
+          <tbody id="planBody"></tbody>
+        </table>
+
+        <div class="small" style="margin-top:8px;color:#a3a3a3">When weight penalty is ON, each leg's burn is increased by <i>Penalty% × (average extra lb / 1000)</i>. Average extra ≈ half of the extra fuel carried above the minimum needed for that leg.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id)=>document.getElementById(id);
+    const fmt$ = (x)=> x===undefined? '—' : x.toLocaleString(undefined,{style:'currency',currency:'USD',maximumFractionDigits:0});
+    const fmtGal = (g)=> Math.round(g).toLocaleString();
+    const fmtPrice = (p)=> (isFinite(p)? `$${Number(p).toFixed(2)}` : '—');
+    const fmtGalLb = (g,dens)=> `${fmtGal(g)} gal (${Math.round(g*dens).toLocaleString()} lb)`;
+
+    document.getElementById('printBtn').addEventListener('click',()=>{ window.print(); });
+    document.getElementById('shareBtn').addEventListener('click',()=>{ navigator.clipboard?.writeText(location.href); alert('Link copied. Anyone with the URL will see these inputs.'); });
+
+    function makeLegRow(i, data){
+      const d = Object.assign({icao:'', price:6.00, burn:2000, land:3000, feeRamp:0, feeSec:0, feeMisc:0, minWaive:0}, data||{});
+      const wrap = document.createElement('div');
+      wrap.className = 'legCard';
+      wrap.innerHTML = `
+        <div class="airport" style="margin-bottom:6px">
+          <input id="icao_${i}" value="${d.icao}" placeholder="Dest ICAO (e.g., KSBA)" maxlength="6" />
+          <div class="row"><label>Fuel Price @ Dest</label><input id="price_${i}" type="number" step="0.01" value="${d.price}"><span class="pill">$/gal</span></div>
+        </div>
+        <div class="grid2">
+          <div class="row"><label>Block Burn</label><input id="burn_${i}" type="number" step="1" value="${d.burn}"><span class="pill">lb</span></div>
+          <div class="row"><label>Desired Fuel on Landing</label><input id="land_${i}" type="number" step="1" value="${d.land}"><span class="pill">lb</span></div>
+        </div>
+        <div class="grid2">
+          <div class="row"><label>Ramp Fee</label><input id="feeRamp_${i}" type="number" step="1" value="${d.feeRamp}"><span class="pill">$</span></div>
+          <div class="row"><label>Security Fees</label><input id="feeSec_${i}" type="number" step="1" value="${d.feeSec}"><span class="pill">$</span></div>
+        </div>
+        <div class="grid2">
+          <div class="row"><label>Misc Fees</label><input id="feeMisc_${i}" type="number" step="1" value="${d.feeMisc}"><span class="pill">$</span></div>
+          <div class="row"><label>Min Fuel to Waive</label><input id="minWaive_${i}" type="number" step="1" value="${d.minWaive}"><span class="pill">gal</span></div>
+        </div>
+        <div class="row-1"><button class="btn" data-act="remove" data-i="${i}">Remove</button></div>
+      `;
+      return wrap;
+    }
+
+    function readLegs(){
+      const list = [];
+      const legsWrap = $('legs');
+      [...legsWrap.children].forEach((node)=>{
+        const i = +node.querySelector('[data-act="remove"]').dataset.i;
+        const get = id=> node.querySelector('#'+id+'_'+i).value;
+        list.push({
+          icao: get('icao')||'',
+          price: +get('price')||0,
+          burn: +get('burn')||0,
+          land: +get('land')||0,
+          feeRamp: +get('feeRamp')||0,
+          feeSec: +get('feeSec')||0,
+          feeMisc: +get('feeMisc')||0,
+          minWaive: +get('minWaive')||0
+        });
+      });
+      return list;
+    }
+
+    function computePlan(dens, legs, origin, burnsG_given){
+      const N = legs.length;
+      const arriveMinG = legs.map(L=> L.land/dens);
+      const stops = [{icao:origin.icao, price:origin.price, fees:0, min:0}]
+        .concat(legs.map(L=> ({icao:L.icao||'DEST', price:L.price, fees:(L.feeRamp+L.feeSec+L.feeMisc), min:L.minWaive||0})));
+
+      const buy = new Array(N+1).fill(0);
+      let onboard = 0;
+      for (let k=0; k<N; k++){
+        let j = N;
+        for (let t=k+1; t<=N; t++){ if (stops[t].price < stops[k].price){ j=t; break; } }
+        let cum = 0, reqDep = 0;
+        for (let t=k+1; t<=j; t++){ cum += burnsG_given[t-1]; const need = cum + arriveMinG[t-1]; if (need>reqDep) reqDep = need; }
+        const needBuy = Math.max(0, reqDep - onboard);
+        buy[k] += needBuy; onboard += needBuy;
+        onboard -= burnsG_given[k];
+        if (onboard < arriveMinG[k]-1e-6){ const add = arriveMinG[k] - onboard; buy[k]+=add; onboard+=add; }
+      }
+
+      function totalCostFromBuy(buyArr){
+        let cost = 0;
+        for (let s=0; s<=N; s++){
+          cost += buyArr[s] * stops[s].price;
+          if (s>0){ const waived=(stops[s].min>0 && buyArr[s] >= stops[s].min); if(!waived) cost += stops[s].fees; }
+        }
+        return cost;
+      }
+
+      let bestBuy = buy.slice();
+      const cheapest = Math.min(...stops.map(s=>s.price));
+      for (let s=1; s<=N; s++){
+        const fees = stops[s].fees, min = stops[s].min, price = stops[s].price;
+        if (fees>0 && min>0 && bestBuy[s] < min){
+          const delta = (price - cheapest)*min - fees;
+          if (delta < -1e-6){
+            bestBuy[s] += min; let remaining = min;
+            const order = [...Array(N+1).keys()].sort((a,b)=> stops[b].price - stops[a].price);
+            for (const idx of order){ if (idx===s) continue; const take = Math.min(bestBuy[idx], remaining); bestBuy[idx]-=take; remaining-=take; if (remaining<=1e-6) break; }
+          }
+        }
+      }
+
+      const arrs = new Array(N+1).fill(0), deps = new Array(N+1).fill(0);
+      let fuel = 0;
+      for (let k=0; k<=N; k++){
+        if (k===0){ arrs[k]=NaN; } else { arrs[k]=fuel; }
+        fuel += bestBuy[k]; deps[k]=fuel; if (k<N){ fuel -= burnsG_given[k]; }
+      }
+
+      return {stops, bestBuy, totalCost: totalCostFromBuy(bestBuy), arrs, deps, arriveMinG};
+    }
+
+    function calc(){
+      const dens = +$('density').value;
+      const origin = { icao: $('origIcao').value||'ORIG', price: +$('p0').value };
+      const legs = readLegs();
+      if (!legs.length){ $('planBody').innerHTML=''; $('kpiTotal').textContent='—'; $('kpiGal').textContent='—'; $('kpiOrig').textContent='—'; return; }
+
+      const N = legs.length;
+      const baseBurnsG = legs.map(L=> L.burn/dens);
+      let plan = computePlan(dens, legs, origin, baseBurnsG);
+
+      const applyPenalty = $('penaltyOn').checked;
+      const penaltyPct = +$('penaltyPct').value;
+
+      function burnsWithPenalty(planIn){
+        const burns = baseBurnsG.slice();
+        for (let t=0; t<N; t++){
+          const departG = planIn.deps[t];
+          const minDepartG = baseBurnsG[t] + planIn.arriveMinG[t];
+          const extraG = Math.max(0, departG - minDepartG);
+          const avgExtraLb = extraG * dens * 0.5;
+          const factor = applyPenalty ? (penaltyPct/100) * (avgExtraLb/1000) : 0;
+          burns[t] = baseBurnsG[t] * (1 + factor);
+        }
+        return burns;
+      }
+
+      if (applyPenalty){
+        const b1 = burnsWithPenalty(plan);
+        plan = computePlan(dens, legs, origin, b1);
+        const b2 = burnsWithPenalty(plan);
+        plan = computePlan(dens, legs, origin, b2);
+      }
+
+      const {stops, bestBuy, totalCost, arrs, deps, arriveMinG} = plan;
+
+      const nextCheap = new Array(N+1).fill(N);
+      for (let k=0; k<N; k++){ for (let t=k+1; t<=N; t++){ if (stops[t].price < stops[k].price){ nextCheap[k]=t; break; } } }
+
+      const body = $('planBody'); body.innerHTML='';
+      for (let k=0; k<=N; k++){
+        const waived = (k>0 && stops[k].min>0 && bestBuy[k] >= stops[k].min);
+        const feesHere = (k>0 ? (waived?0:stops[k].fees) : 0);
+        let why = [];
+        if (k===0){
+          if (bestBuy[k] > 0){
+            if (nextCheap[k] < N){ why.push(`Buy enough to reach cheaper fuel at ${stops[nextCheap[k]].icao} and meet arrival mins.`); }
+            else { why.push('No cheaper fuel ahead; buy here.'); }
+          } else { why.push('No origin buy needed.'); }
+        } else {
+          if (bestBuy[k] > 0){
+            if (waived && stops[k].min>0){ why.push(`Buy ${Math.round(stops[k].min)} gal to waive ${fmt$(stops[k].fees)} in fees.`); }
+            else if (stops[k].price <= (k>0?stops[k-1].price:stops[0].price)){ why.push('Local price competitive; topping here.'); }
+            else if (nextCheap[k] < N){ why.push(`Bridge fuel until cheaper stop ${stops[nextCheap[k]].icao}.`); }
+            else { why.push('Final/top-off as needed for arrival target.'); }
+          } else {
+            if (stops[k].min>0){ why.push(waived? '': `No buy; fees ${fmt$(stops[k].fees)} not waived.`); }
+            else { why.push('No fees here; skipping fuel.'); }
+          }
+          why.push(`Arrival target ${fmtGal(arriveMinG[k-1])} gal.`);
+          if (applyPenalty){ why.push('Weight penalty applied on burn.'); }
+        }
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${k}</td>
+          <td>${stops[k].icao}</td>
+          <td class="right">${fmtGal(bestBuy[k])}</td>
+          <td class="right">${fmtPrice(stops[k].price)}</td>
+          <td class="right">${fmt$(feesHere)}</td>
+          <td class="right">${isNaN(arrs[k])?'—':fmtGalLb(arrs[k], dens)}</td>
+          <td class="right">${fmtGalLb(deps[k], dens)}</td>
+          <td class="small">${why.filter(Boolean).join(' ')}</td>`;
+        body.appendChild(tr);
+      }
+
+      $('kpiTotal').textContent = fmt$(totalCost);
+      $('kpiGal').textContent = fmtGal(bestBuy.reduce((a,b)=>a+b,0));
+      $('kpiOrig').textContent = fmtGal(bestBuy[0]);
+      $('kpiTotalNote').textContent = applyPenalty ? 'Includes fees (unless waived) and weight-penalty burn.' : 'Includes destination fees unless waived by min purchase.';
+      $('kpiGalNote').textContent = 'Sum of purchases across all stops.';
+
+      const params = new URLSearchParams({density:dens, orig:$('origIcao').value, p0:origin.price, pen:applyPenalty?1:0, pp:penaltyPct});
+      legs.forEach((L,i)=>{
+        params.append('icao'+i, L.icao); params.append('price'+i, L.price); params.append('burn'+i, L.burn); params.append('land'+i, L.land);
+        params.append('ramp'+i, L.feeRamp); params.append('sec'+i, L.feeSec); params.append('misc'+i, L.feeMisc); params.append('min'+i, L.minWaive||0);
+      });
+      history.replaceState({},'',location.pathname+'?'+params.toString());
+    }
+
+    function addLeg(data){
+      const legsWrap = $('legs');
+      const i = legsWrap.children.length;
+      const row = makeLegRow(i, data);
+      legsWrap.appendChild(row);
+      row.addEventListener('click', (e)=>{ if (e.target.dataset.act==='remove'){ row.remove(); calc(); } });
+      row.addEventListener('input', ()=>{ /* live changes */ });
+    }
+
+    document.getElementById('calcBtn').addEventListener('click', calc);
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const q=new URLSearchParams(location.search);
+      $('density').value = q.get('density') || '6.70';
+      $('origIcao').value = q.get('orig') || 'KFTW';
+      $('p0').value = q.get('p0') || '4.25';
+      const pen = q.get('pen'); $('penaltyOn').checked = pen ? (pen==='1') : true;
+      $('penaltyPct').value = q.get('pp') || '1.5';
+      if ([...q.keys()].length && q.has('icao0')){
+        let i=0; while (q.has('icao'+i)){
+          addLeg({icao:q.get('icao'+i)||'', price:+q.get('price'+i)||6, burn:+q.get('burn'+i)||2000, land:+q.get('land'+i)||3000, feeRamp:+q.get('ramp'+i)||0, feeSec:+q.get('sec'+i)||0, feeMisc:+q.get('misc'+i)||0, minWaive:+q.get('min'+i)||0}); i++; }
+      } else {
+        addLeg({icao:'KSBA', price:7.25, burn:7500, land:3500, feeRamp:85, feeSec:0, feeMisc:0, minWaive:75});
+        addLeg({icao:'KFTW', price:4.25, burn:2600, land:4000, feeRamp:0, feeSec:0, feeMisc:0, minWaive:0});
+      }
+      calc();
+    });
+  </script>
+</body>
+</html>

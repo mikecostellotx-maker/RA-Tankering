@@ -1,0 +1,9 @@
+{
+  "name": "RA Tankering Calculator",
+  "short_name": "Tankering",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b1223",
+  "theme_color": "#0b1223",
+  "icons": []
+}
